@@ -1,15 +1,13 @@
 ---
-title: "Un joli titre pour le dashboard"
-author: "Marie-Pierre Etienne"
-output: 
+title: "Cities and Global Warming"
+author: "An Hoàng & Virginie Guisneuf"
+output:
   flexdashboard::flex_dashboard:
     theme: bootstrap
     orientation: columns
     vertical_layout: fill
-    navbar:
-      - { title: "Moodle", href: "https://tice.agrocampus-ouest.fr/course/view.php?id=6726", align: left }
-      - { icon: "fa-twitter", href: "https://twitter.com/marie_etienne", align: right }
-      - { icon: "fa-linkedin", href: "https://www.linkedin.com/in/marie-etienne-818a7115/", align: right }
+  html_document:
+    df_print: paged
 params:
   setup_path: ../resources/
 ---
@@ -26,58 +24,438 @@ color:black!important;
 
 </style>   
 
-
 ```{r setup, include=FALSE}
+# Importation of the packages
 library(flexdashboard)
-library(tidyverse)
+library("tidyverse")
+library(sf)
+library(tidyr)
+library(dplyr)
+library(tmap)
+library(maps)
+library(lubridate)
+library(data.table)
+library(FactoMineR)
+library(spData)
 library(ggplot2)
-library(plotly)
+library(spDataLarge)
+library("rnaturalearth")
+library("rnaturalearthdata")
+library(gganimate)
+library(FactoMineR)
 ```
 
-Column {data-width=650}
+```{r echo=FALSE, results='hide',message=FALSE}
+#Importation of the data 
+City <- read.csv("GlobalLandTemperaturesByCity.csv",encoding='UTF-8')
+Global <- read.csv("GlobalTemperatures.csv", encoding='UTF-8')
+```
+
+The objective here is to understand global warming in the world's cities.
+Three graphs will be constructed to see the global evolution in the cities in a first step.
+Then the evolution of the temperature in the cities in each continent.
+The study beging in 1825.
+
+
+Graphiques
+====================================================================================
+
+#### Global evolution of temperature
+
+```{r echo = FALSE, results='hide',message=FALSE}
+################
+###### City
+################
+
+
+#Revoming of missing data
+#Ajustement of the date format and creating of the columns year and month 
+
+City <- na.omit(City) 
+City$dt <- strptime(City$dt, format = "%Y-%m-%d", tz = "")
+City$year <- year(City$dt)
+City$month <- month(City$dt)
+
+# Selection of cities with at least 11 observations per year since 1825. -->
+# From the pre-selected list, selection of cities with data for at least 185 years out of the 190 studied. -->
+```
+
+
+```{r echo=FALSE, results='hide',message=FALSE}
+Citymois <- City %>%
+  filter(year > 1824) %>%
+  group_by(City, year) %>%
+  summarise(Nombremois = n()) %>%
+  filter(Nombremois > 10)
+
+Cityannee1825 <- Citymois %>% 
+    filter(year < 2015) %>%
+    group_by(City) %>% 
+    summarise(Nombreannee = n()) %>%
+    filter(Nombreannee > 185)
+
+count(Cityannee1825)
+# 1501 villes are selected
+
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# List of the selected cities
+Cityannee1825 <- Cityannee1825$City
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Calculation of the average temperature in the cities for each city 
+temperatureDataByCity = City %>%
+    filter(City %in% Cityannee1825, year > 1824) %>%
+    group_by(City) %>%
+    summarize(
+        MeanAverageTemperature = mean(as.numeric(AverageTemperature),na.rm=TRUE),
+    ) 
+
+head(temperatureDataByCity)
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Calculation of the average temperature in the cities for each year
+temperatureCityByYear = City %>%
+    filter(City %in% Cityannee1825, year > 1824) %>%
+    group_by(year) %>%
+    summarize(
+        MeanCity = mean(as.numeric(AverageTemperature),na.rm=TRUE),
+    ) 
+
+head(temperatureCityByYear)
+
+```
+
+
+```{r echo=FALSE, results='hide',message=FALSE}
+################
+###### Global
+################
+
+#Ajustement of the date format and creating of the column year 
+Global$dt <- strptime(Global$dt, format = "%Y-%m-%d", tz = "")
+Global$year <- year(Global$dt)
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Calculation of the average temperature global for each year 
+LandByYear = Global %>%
+    filter(year > 1824, year < 2014) %>%
+    group_by(year) %>%
+    summarize(
+        MeanLand = mean(as.numeric(LandAverageTemperature),na.rm=TRUE),
+    ) 
+
+head(LandByYear)
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Creation of a data.frame Data whith merge temperatureCityByYear and LandByyear by year
+Data = merge(x =temperatureCityByYear, y = LandByYear, by ="year")
+head(Data)
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Calculation of the difference beetween the global mean of the temperature on the earth and the global temperature for each year
+Meanglobal <- mean(Data$MeanLand)
+LandDataByYear <- LandByYear %>% filter(year<2014) ## retrait année 2014 et 2015
+diff_global <- LandDataByYear$MeanLand - Meanglobal ## calcul des différences de température avec 1826
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Calculation of the difference beetween the global mean in the cities of the temperature global in the cities for each year
+temperatureCityByYear
+Meanglobalcity <- mean(temperatureCityByYear$MeanCity)
+diff_city <- temperatureCityByYear$MeanCity - Meanglobalcity
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Creation of a data.frame who compil the difference of temperature with the global mean and the mean in cities for each each year
+annee <-  temperatureCityByYear$year
+Data_diff <-  cbind.data.frame(annee,diff_global,diff_city)
+head(Data_diff)
+```
+
+Column
 -----------------------------------------------------------------------
 
-### An easy solution for dashboard
-
-```{r, echo = TRUE}
-#install.package('flexdasboard')
-#rmarkdown::draft("dashboard.Rmd", template = "flex_dashboard", package = "flexdashboard")
+```{r echo=FALSE, results='hide',message=FALSE}
+# If the mean of temperature the year is under the global temperature in cites the color is blue otherwise red
+Data_diff <- Data_diff %>% 
+  mutate(mycolor = ifelse(diff_city < 0, "red", "blue"))
 ```
 
-The [flexdashboard website](https://rmarkdown.rstudio.com/flexdashboard/index.html) provides multiple advanced examples.
-
-### Some static graph
-
-```{r data, eval = TRUE, echo = FALSE, results='hide', message = FALSE, warning=FALSE}
-n <- 100
-dta <- tibble(size = round(rnorm(n, mean = 0, sd =10),2), 
-           color = sample(x= c('Blue', 'Yellow'), size = n, replace = TRUE))
-
-```
-
-
-```{r graph_static,  echo = FALSE,  message = FALSE, warning=FALSE}
-p1 <- dta %>% ggplot() +
-  aes(x=color, y = size) +
-  geom_boxplot(aes(fill= color))
-p1
-```
-
-Column {.tabset .tabset-fade}
------------------------------------------------------------------------
-
-
-### Some dynamic maps
-
-```{r  ggplotly, echo = TRUE,  eval = TRUE,  message = FALSE, warning=FALSE}
-plotly::ggplotly(p1)
-```
-
-
-
-### Chart C
+### Comparaison global et dans les villes
 
 ```{r}
+Global_graph <-  Data_diff %>% ggplot () +
+  theme_bw() +
+  geom_segment( aes(x=annee, xend=annee, y=0, yend=diff_city, colour=mycolor), size=1.5) + ## Evolution in the world's cities
+  geom_line(aes(x=annee, y=diff_global),color="grey27", alpha = 0.8, size=0.8) + ## Evolution in the global world
+  theme(legend.position = "none") + ## removing of the legend
+  annotate("rect", xmin = 1825, xmax = 1840, ymin = -3, ymax = 1.5, fill = "peru", alpha = 0.25) + ## adding of a restangle 
+  annotate("text", label = "Révolution Industrielle", fontface = "bold", x = 1850, y = 1.5, vjust = 0, size = 3.5) + ## adding of text
+  geom_segment(aes(x = 1990, y = 1.6, xend = 1997.5, yend = 1),size=1, arrow = arrow(length = unit(0.2, "cm")))+  ## adding of a arrow
+  annotate("text", label = "Evolution global", fontface = "italic", x = 1972, y = 1.65, vjust = 0, size = 3.5) +## adding of text
+  ggtitle("Ecart de température sur Terre de 1825 à nos jours") + ## Title
+  labs(subtitle = "Suivi de l'évolution dans les villes comparé à l'évolution global", col="Température") + ## Subtitel
+  xlab ("Année") + ylab ("Ecart de Température en °C") + ## name of the x and y scales
+  scale_x_continuous(breaks = seq(1825,2050,25)) + scale_y_continuous(breaks = seq(-3.5,1.5,0.5)) + ## scale of x and y axes
+  labs(caption = "Source: http://berkeleyearth.org/data") ## data source
+
+Global_graph
+```
+
+Column
+-----------------------------------------------------------------------
+### Evolution of temperature in cities of each continants
+
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Selection of the years up to 1824
+# Sort by country, city and year
+# For each each city we calculate the mean of temparature per year
+Citycontient = City %>%
+    filter(City %in% Cityannee1825,year > 1824) %>%
+    group_by(Country,City,year) %>%
+    summarize(
+        MeanCity = mean(as.numeric(AverageTemperature),na.rm=TRUE),
+    )
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Recuparation of the country name and the continant they came form
+data(World)
+Country_data <- levels(factor(Citycontient$Country))
+Country_data == World$name
+
+Q <- 0
+for (i in 1:length(World$name)) {
+    Q[i] = World$name[i] %in% Country_data
+}
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Creation of the data.frame Data2 who specify the continant of each cities
+Continant <- as.data.frame(subset(World, Q == TRUE , select = c(name, continent)))
+Continant <- Continant[,1:2]
+colnames(Continant) <- c("Country","Continant")
+Data2<- merge(Continant, Citycontient)
+
+summary(Data2)
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+# Good representation from Europe, Asia and North America. Very little data from Oceania.
+CAfrica = Data2 %>%
+    filter(Continant == "Africa") %>%
+    group_by(year) %>%
+    summarize(
+        MeanCity = mean(as.numeric(MeanCity),na.rm=TRUE),
+    )
+
+Mean_Africa <- mean(CAfrica$MeanCity)
+Africa <- CAfrica$MeanCity - Mean_Africa
 
 ```
 
+```{r echo=FALSE, results='hide',message=FALSE}
+CAmerican_Nord = Data2 %>%
+    filter(Continant == "North America") %>%
+    group_by(year) %>%
+    summarize(
+        MeanCity = mean(as.numeric(MeanCity),na.rm=TRUE),
+    )
+
+Mean_Am_N <- mean(CAmerican_Nord$MeanCity)
+Am_N <- CAmerican_Nord$MeanCity - Mean_Am_N
+
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+CAsia = Data2 %>%
+    filter(Continant == "Asia") %>%
+    group_by(year) %>%
+    summarize(
+        MeanCity = mean(as.numeric(MeanCity),na.rm=TRUE),
+    )
+
+Mean_Asia <- mean(CAsia$MeanCity)
+Asia <- CAsia$MeanCity - Mean_Asia
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+CEurope = Data2 %>%
+    filter(Continant == "Europe") %>%
+    group_by(year) %>%
+    summarize(
+        MeanCity = mean(as.numeric(MeanCity),na.rm=TRUE),
+    )
+
+Mean_Europe <- mean(CEurope$MeanCity)
+Europe <- CEurope$MeanCity - Mean_Europe
+```
+
+```{r echo=FALSE, results='hide',message=FALSE}
+DataContinant <- cbind.data.frame(annee, Africa,Am_N,Asia,Europe)
+DataContinant
+```
+
+```{r echo=FALSE}
+ContinantPlot <-  DataContinant %>% 
+  ggplot() +
+  theme_bw()+
+    geom_smooth(aes(x=annee,y=Africa, color="deepskyblue3"), method="loess", formula=y~x) +
+    geom_smooth(aes(x=annee,y=Europe, color="chartreuse4"), method="loess", formula=y~x) +
+    geom_smooth(aes(x=annee,y=Asia, color="red"), method="loess", formula=y~x) +
+    geom_smooth(aes(x=annee,y=Am_N, color="black"), method="loess", formula=y~x) +
+    ggtitle("Température moyenne dans les villes de chaque continent") + 
+    labs(subtitle = "Comparaison à la température moyenne dans chaque continent") +
+    xlab('Année') +
+    ylab('Ecart de température en °C') +
+    scale_x_continuous(breaks = seq(1825,2050,25)) +
+    labs(caption = "Source: http://berkeleyearth.org/data") +
+    scale_color_manual(values= c("deepskyblue3","chartreuse4", "red","black" ),name = "Continant", labels = c("Africa", "Europe","Amérique N","Asia")) +
+    theme(legend.position="bottom")
+  
+
+print(ContinantPlot)
+```
+
+Maps
+====================================================================================
+Column
+------------------------------------------------------------------------------------
+
+```{r, results='hide'}
+
+ByCity <- City[,c(-1,-3)] %>% subset(year>=1825)
+#7609490
+```
+
+```{r choosen temp every 10 year, results='hide'}
+Year <- levels(as.factor(ByCity$year))
+
+### year sequence for every 10 year
+chosen <- Year[1]
+n <- length(t(Year))/10
+
+for (i in (1:n)) {
+  chosen[i+1] <- Year[i*10+1] 
+}
+
+chosen = chosen %>%
+        as.data.frame() %>%
+        rbind(Year[length(Year)]) %>%
+        unlist()
+        
+### select data for every 10 year
+mydata <- subset(ByCity, year %in% chosen)   #790214
+```
+
+```{r 1 take mean for every month, results='hide'}
+mydata1 <- mydata %>%
+  group_by(City, Country, year, month) %>%
+  summarise_at(vars(AverageTemperature), list(temp = mean)) %>%   #calculate sum in 1 month
+  filter(n()>10) %>%    #leave out city which is not have >10 months
+  summarise_at(vars(temp), list(temps = mean))  #year.ave temperature
+```
+
+```{r, results='hide'}
+#calculated temps differences
+data = setDT(mydata1[,-3])[,lapply(.SD, 
+                               function(x) x- x[which(!is.na((x)))[1]]),
+                                by = list(City, Country)]
+data = data %>%
+      as.data.frame() %>%
+      cbind(mydata1$year)
+
+```
+
+```{r longtitude, latitude, results='hide'}
+# convert longitude and latitude into numeric
+
+#ByCity$City <- as.factor(ByCity$City) 
+#ByCity$Country <- as.factor(ByCity$Country)
+
+coor <- ByCity %>%
+        subset(select = c(City, Country, Longitude, Latitude))  %>%
+        unique()
+
+coor$Longitude2 <- coor$Longitude
+coor$Latitude2 <- coor$Latitude
+
+coor$Longitude <- str_sub(coor$Longitude,1,nchar(coor$Longitude)-1)
+coor$Longitude2 <- str_sub(coor$Longitude2,-1)
+
+coor$Latitude <- str_sub(coor$Latitude,1,nchar(coor$Latitude)-1)
+coor$Latitude2 <- str_sub(coor$Latitude2,-1)
+
+for (i in 1:nrow(coor)) {
+  if (coor$Longitude2[i] == "E"){
+      coor$Longitude2[i] = 1
+  }else{
+      coor$Longitude2[i] = -1
+  }
+  if (coor$Latitude2[i] == "N"){
+      coor$Latitude2[i] = 1
+  }else{
+      coor$Latitude2[i] = -1
+  }
+}
+
+coor$Long <- with(coor, as.numeric(Longitude)*as.numeric(Longitude2))
+coor$Lat  <- with(coor, as.numeric(Latitude)*as.numeric(Latitude2))
+
+coor <- coor[c("City", "Country", "Long", "Lat")]
+
+
+```
+
+```{r puting lat and long into data, results='hide'}
+
+colnames(data) <- c("City","Country", "temps", "year")
+mydata2 = data %>%
+        left_join(y = coor) %>%
+        filter(!is.na(year))  %>%
+        unique() 
+
+```
+#### ACP
+
+```{r, echo=FALSE, eval=FALSE}
+res.pca <- PCA(mydata2,quali.sup = c(1:2))
+plot(res.PCA)
+```
+
+![](C:\Users\Admin\Documents\M2\Visual\Project\000011.png)
+
+
+Column
+-----------------------------------------------------------------------
+
+#### Carte 
+
+```{r, results='hide', message=FALSE}
+## Map by year 
+
+sub <- subset(mydata2, year == "2005")
+sub <- subset(mydata2, temps < 2 & temps > -2)
+```
+
+```{r, message=FALSE, echo=FALSE, eval = FALSE, results='hide',}
+
+p <- ggplot() + geom_sf(aes(geometry = World$geometry)) 
+p + geom_point(aes(x = sub$Long, y = sub$Lat, color = sub$temps)) +
+  scale_color_gradient2(name = "Ecart de temperature",low ="cyan", mid = "blue",high = "red") +
+  ggtitle("Evolution de la temperature de 1825 a 2005") + 
+    xlab('Latitude') +
+    ylab('Longitude')
+
+coord_sf()
+```
+
+![](C:\Users\Admin\Documents\M2\Visual\Project\2005.png)
